@@ -1,0 +1,1073 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>PIC Daily Task Board</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📋</text></svg>"/>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+  <style>html,body{margin:0;padding:0;background:#0f172a;}#root{min-height:100vh;}</style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel">
+const { useState, useEffect, useRef } = React;
+
+// ─── DATA ─────────────────────────────────────────────────────────────────────
+
+const PICS = ["Jaden", "Dominique", "I'ketta"];
+
+const THEMES = [
+  { bg: "from-violet-600 to-indigo-700",   card: "#6366f1", glow: "rgba(99,102,241,0.35)",  light: "#eef2ff", dark: "#3730a3", text: "#4338ca", badge: "#c7d2fe", badgeTxt: "#3730a3" },
+  { bg: "from-cyan-500 to-blue-600",        card: "#0ea5e9", glow: "rgba(14,165,233,0.35)",  light: "#e0f2fe", dark: "#0c4a6e", text: "#0369a1", badge: "#bae6fd", badgeTxt: "#0c4a6e" },
+  { bg: "from-fuchsia-500 to-purple-700",   card: "#a855f7", glow: "rgba(168,85,247,0.35)",  light: "#faf5ff", dark: "#581c87", text: "#7e22ce", badge: "#e9d5ff", badgeTxt: "#581c87" },
+];
+
+const TASK_GROUPS = {
+  // Group 1 — 8 tasks (includes the 4 admin tasks — rotates Jaden→Dominique→I'ketta)
+  group1: [
+    { id:"cl1", text:"Create Hospitalist List for Today", priority:true, priorityGroup:"admin" },
+    { id:"cl2", text:"Create ED Admissions TIGERTEXT Group", priority:true, priorityGroup:"admin" },
+    { id:"cl3", text:"Send Out Census & Hospitalist List Emails", priority:true, priorityGroup:"admin" },
+    { id:"cl4", text:"Fax Out Hospitalist List to All Applicable Recipients", priority:true, priorityGroup:"admin" },
+    { id:"ca1", text:"Verify & Update Patient Room Numbers" },
+    { id:"ca4", text:"Enter Missing Event Information", note:"Located under Scrubber Failure / Event Information" },
+    { id:"ca5", text:"Review & Check Scrubbers", note:"Must be completed daily" },
+    { id:"da1", text:"Verify Day Admissions & Enter Patient Demographics" },
+    { id:"ca2", text:"Document PET Visit Status in System", note:"Currently not conducting PET visits — note in system" },
+  ],
+  // Group 2 — 8 tasks
+  group2: [
+    { id:"da2", text:"Generate Rounding Lists for Day Shift" },
+    { id:"db1", text:"Retrieve & File H&P Documents" },
+    { id:"db2", text:"File Missing Face Sheets", note:"Located under Required Documents" },
+    { id:"db3", text:"File Clinical Pathways" },
+    { id:"db4", text:"Answer ED Phone Calls for Admissions & Consults" },
+    { id:"db5", text:"Review & Check PIC Requests", note:"Must be completed daily" },
+    { id:"db6", text:"Review & Update Managed Schedules", note:"Must be completed daily" },
+    { id:"ni1", text:"Verify Night Admissions & Enter Patient Demographics" },
+    { id:"ca3a", text:"File CQI Document" },
+  ],
+  // Group 3 — 8 tasks
+  group3: [
+    { id:"ni2", text:"Generate Rounding Lists for Night Shift" },
+    { id:"ni3", text:"Bring on Service & Enter Demographics for ICU Downgrades" },
+    { id:"nc1", text:"Retrieve & File Discharge Documents" },
+    { id:"nc2", text:"Scan Face Sheets & File Rounding List" },
+    { id:"nc3", text:"File Missing Documentation", note:"Located under Document Transmission" },
+    { id:"nc4", text:"Enter Missing Outside Physician Information", note:"Contact the practice directly" },
+    { id:"nc5", text:"Verify All Audit Documents Are Filed", note:"If unavailable, contact provider — must be completed daily" },
+    { id:"nc6", text:"Enter Missing PCP Information", note:"Check Medi-Tech or contact patient directly" },
+    { id:"ca3b", text:"Complete CQI Questions" },
+  ],
+};
+
+// Rotation — all 3 PICs get tasks every cycle (10 / 10 / 9)
+// Group 1 (with admin tasks) rotates: Cycle A=Jaden, B=Dominique, C=I'ketta
+// Over 3 cycles every PIC does each group once = 29 tasks total, perfectly fair
+// Rotation cycles — each PIC gets exactly 8 tasks per cycle
+// group1 (admin tasks included) rotates: Cycle A=Jaden, B=Dominique, C=I'ketta
+const ROTATION = [
+  { "Jaden":"group1",     "Dominique":"group2",  "I'ketta":"group3"  }, // Cycle A
+  { "Jaden":"group3",     "Dominique":"group1",  "I'ketta":"group2"  }, // Cycle B
+  { "Jaden":"group2",     "Dominique":"group3",  "I'ketta":"group1"  }, // Cycle C
+];
+
+const WEEKEND_BASE = [
+  { id:"wk01", text:"Create Hospitalist List for Today", group:"admin" },
+  { id:"wk02", text:"Create ED Admissions TIGERTEXT Group", group:"admin" },
+  { id:"wk03", text:"Send Out Census & Hospitalist List Emails", group:"admin" },
+  { id:"wk04", text:"Fax Out Hospitalist List to All Applicable Recipients", group:"admin" },
+  { id:"wk05", text:"Verify Day Admissions & Enter Patient Demographics" },
+  { id:"wk06", text:"Verify Night Admissions & Enter Patient Demographics" },
+  { id:"wk07", text:"Verify & Update Room Numbers" },
+  { id:"wk08", text:"Generate Rounding Lists for Day & Night Shift" },
+  { id:"wk09", text:"Scan Face Sheets & File Rounding List" },
+  { id:"wk10", text:"Bring on Service & Enter Demographics for ICU Downgrades" },
+  { id:"wk11", text:"Enter Patient Demographics" },
+  { id:"wk12", text:"Retrieve & File Discharge Documents" },
+  { id:"wk13", text:"Retrieve & File H&P Documents" },
+  { id:"wk14", text:"Review Audits & File All Requested Documentation" },
+];
+
+// ─── MONTHLY REPORTS ─────────────────────────────────────────────────────────
+const PERIODIC_REPORTS = [
+  { id:"mr1", text:"Complete FINA Reports" },
+  { id:"mr2", text:"Complete Address Change Report" },
+  { id:"mr3", text:"Complete Insurance Change Report" },
+  { id:"mr4", text:"Complete Missing Documents Report" },
+  { id:"mr5", text:"Complete Missing H&P's Report" },
+];
+
+// ─── DATE UTILS ───────────────────────────────────────────────────────────────
+
+function getISOWeek(date) {
+  const d = new Date(date); d.setHours(0,0,0,0);
+  d.setDate(d.getDate() + 4 - (d.getDay()||7));
+  return Math.ceil(((d - new Date(d.getFullYear(),0,1))/86400000+1)/7);
+}
+function getWeekInfo(offset=0) {
+  const base = new Date(); base.setDate(base.getDate()+offset*7);
+  const dow = base.getDay();
+  const mon = new Date(base); mon.setDate(base.getDate()-(dow===0?6:dow-1));
+  const fri = new Date(mon); fri.setDate(mon.getDate()+4);
+  const sat = new Date(mon); sat.setDate(mon.getDate()+5);
+  const sun = new Date(mon); sun.setDate(mon.getDate()+6);
+  const wn = getISOWeek(mon);
+  const fmt = d => d.toLocaleDateString("en-US",{month:"short",day:"numeric"});
+  return {
+    key:`${mon.getFullYear()}-W${String(wn).padStart(2,"0")}`,
+    rotIdx: wn%3,
+    weekLabel:`${fmt(mon)} – ${fmt(fri)}`,
+    weekendLabel:`${fmt(sat)} – ${fmt(sun)}`,
+    weekNum: wn,
+  };
+}
+
+// ─── STORAGE ──────────────────────────────────────────────────────────────────
+function load(k) { try { const r=localStorage.getItem(k); return r?JSON.parse(r):null; } catch { return null; } }
+function save(k,v) { try { localStorage.setItem(k,JSON.stringify(v)); } catch {} }
+
+// ─── RING CHART ───────────────────────────────────────────────────────────────
+function RingChart({ pct, color, size=72, stroke=8 }) {
+  const r = (size-stroke*2)/2;
+  const circ = 2*Math.PI*r;
+  const dash = circ*(pct/100);
+  return (
+    <svg width={size} height={size} style={{transform:"rotate(-90deg)"}}>
+      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="rgba(255,255,255,0.15)" strokeWidth={stroke}/>
+      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="rgba(255,255,255,0.9)"
+        strokeWidth={stroke} strokeDasharray={`${dash} ${circ}`} strokeLinecap="round"
+        style={{transition:"stroke-dasharray 0.6s ease"}}/>
+    </svg>
+  );
+}
+
+// ─── MINI BAR ─────────────────────────────────────────────────────────────────
+function MiniBar({ pct, color }) {
+  return (
+    <div style={{background:"rgba(0,0,0,0.15)",borderRadius:99,height:6,overflow:"hidden",marginTop:4}}>
+      <div style={{width:`${pct}%`,background:"rgba(255,255,255,0.85)",height:"100%",borderRadius:99,transition:"width 0.5s ease"}}/>
+    </div>
+  );
+}
+
+// ─── TASK CARD ────────────────────────────────────────────────────────────────
+function TaskCard({ task, done, theme, swapOpts, locked, isCoverage, isReassigned, onToggle, onReassign, onReset, isCustom, isPriority }) {
+  return (
+    <div style={{
+      background: done ? "rgba(16,185,129,0.08)" : "rgba(255,255,255,0.96)",
+      border: `1px solid ${done ? "rgba(16,185,129,0.3)" : isReassigned ? "rgba(245,158,11,0.4)" : "rgba(0,0,0,0.07)"}`,
+      borderLeft: `3px solid ${done ? "#10b981" : isReassigned ? "#f59e0b" : isPriority ? "#fb923c" : theme.card}`,
+      borderRadius: 10, padding:"10px 12px", marginBottom:7,
+      boxShadow: done ? "none" : "0 2px 8px rgba(0,0,0,0.06)",
+      transition:"all 0.2s ease",
+      opacity: done ? 0.8 : 1,
+    }}>
+      <div style={{display:"flex",alignItems:"flex-start",gap:10}}>
+        {/* Checkbox */}
+        <div onClick={onToggle} style={{
+          width:20,height:20,borderRadius:6,flexShrink:0,marginTop:1,cursor:"pointer",
+          background: done ? "#10b981" : "transparent",
+          border: `2px solid ${done ? "#10b981" : theme.card}`,
+          display:"flex",alignItems:"center",justifyContent:"center",
+          transition:"all 0.2s",boxShadow: done ? "0 0 8px rgba(16,185,129,0.4)" : "none",
+        }}>
+          {done && <span style={{color:"#fff",fontSize:11,fontWeight:900,lineHeight:1}}>✓</span>}
+        </div>
+
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{fontSize:13,fontWeight:done?400:500,color:done?"#9ca3af":"#1e293b",
+            textDecoration:done?"line-through":"none",lineHeight:1.45}}>
+            {task.text}
+          </div>
+          {task.note && (
+            <div style={{fontSize:11,color:"#64748b",marginTop:4,background:"#f8fafc",
+              borderRadius:5,padding:"3px 7px",lineHeight:1.4,display:"flex",gap:5}}>
+              <span>ℹ</span><span style={{fontStyle:"italic"}}>{task.note}</span>
+            </div>
+          )}
+          <div style={{display:"flex",gap:4,marginTop:5,flexWrap:"wrap"}}>
+            {isReassigned && <span style={{fontSize:9,fontWeight:800,background:"#fef3c7",color:"#b45309",padding:"2px 6px",borderRadius:99,letterSpacing:"0.05em"}}>REASSIGNED</span>}
+            {isCoverage && !isReassigned && <span style={{fontSize:9,fontWeight:800,background:"#fef3c7",color:"#b45309",padding:"2px 6px",borderRadius:99,letterSpacing:"0.05em"}}>PRIORITY</span>}
+            {isPriority && <span style={{fontSize:9,fontWeight:800,background:"rgba(251,146,60,0.18)",color:"#fb923c",padding:"2px 8px",borderRadius:99,letterSpacing:"0.06em",border:"1px solid rgba(251,146,60,0.45)",display:"inline-flex",alignItems:"center",gap:3}}>⭐ PRIORITY</span>}
+            {isCustom && <span style={{fontSize:9,fontWeight:800,background:"#f0fdf4",color:"#15803d",padding:"2px 6px",borderRadius:99,letterSpacing:"0.05em"}}>ADDED</span>}
+          </div>
+        </div>
+
+        <div style={{display:"flex",flexDirection:"column",gap:4,flexShrink:0}}>
+          {swapOpts.length>0 && (
+            <button onClick={onReassign} style={{
+              fontSize:10,padding:"3px 8px",borderRadius:6,
+              background:theme.light,border:`1px solid ${theme.badge}`,
+              color:theme.text,fontWeight:700,cursor:"pointer",
+            }}>⇄ Swap</button>
+          )}
+          {isReassigned && (
+            <button onClick={onReset} style={{
+              fontSize:10,padding:"3px 8px",borderRadius:6,
+              background:"#fee2e2",border:"1px solid #fca5a5",
+              color:"#dc2626",fontWeight:700,cursor:"pointer",
+            }}>↩ Reset</button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── MAIN APP ─────────────────────────────────────────────────────────────────
+function App() {
+  const [tab, setTab] = useState("w3");
+  const [view, setView] = useState("board"); // "board" | "dash"
+  const [weekOffset, setWeekOffset] = useState(0);
+  const [checked, setChecked] = useState({});
+  const [swapped, setSwapped] = useState({});
+  const [absentPic, setAbsentPic] = useState(PICS[1]);
+  const [wknd, setWknd] = useState({count:1,p1:PICS[0],p2:PICS[1]});
+  const [customTasks, setCustomTasks] = useState([]);
+  const [wdCustomTasks, setWdCustomTasks] = useState([]);
+  const [customNames, setCustomNames] = useState({});
+  const [customDates, setCustomDates] = useState({});
+  const [addInput, setAddInput] = useState("");
+  const [addPic, setAddPic] = useState(PICS[0]);
+  const [modal, setModal] = useState(null);
+  const [locked, setLocked] = useState(true);
+  const [pinModal, setPinModal] = useState(null);
+  const [pinInput, setPinInput] = useState("");
+  const [pinError, setPinError] = useState("");
+  const [pin, setPin] = useState("1234");
+  const [editingName, setEditingName] = useState(null);
+  const [editingDate, setEditingDate] = useState(null);
+  const [nameInput, setNameInput] = useState("");
+  const [dateInput, setDateInput] = useState("");
+  const [periodicReports, setMonthlyReports] = useState(
+    Object.fromEntries(PERIODIC_REPORTS.map(r=>[r.id,{done:false,completedBy:"",notAvailable:false}]))
+  );
+  const [history, setHistory] = useState([]);
+  const [historyDay, setHistoryDay] = useState(null);
+  const [lastDate, setLastDate] = useState("");
+  const [ready, setReady] = useState(false);
+
+  const wi = getWeekInfo(weekOffset);
+
+  useEffect(() => {
+    const d = load("picboard-v5");
+    if (d) {
+      setChecked(d.checked||{}); setSwapped(d.swapped||{});
+      setAbsentPic(d.absentPic||PICS[1]); setWknd(d.wknd||{count:1,p1:PICS[0],p2:PICS[1]});
+      setCustomTasks(d.customTasks||[]); setWdCustomTasks(d.wdCustomTasks||[]);
+      setCustomNames(d.customNames||{}); setCustomDates(d.customDates||{});
+      if(d.pin) setPin(d.pin);
+      if(d.periodicReports) setMonthlyReports(d.periodicReports);
+      if(d.history) setHistory(d.history);
+      if(d.lastDate) setLastDate(d.lastDate);
+    }
+    setReady(true);
+  },[]);
+
+  useEffect(() => {
+    if(!ready) return;
+    save("picboard-v5",{checked,swapped,absentPic,wknd,customTasks,wdCustomTasks,customNames,customDates,pin,history,lastDate,periodicReports});
+  },[checked,swapped,absentPic,wknd,customTasks,wdCustomTasks,customNames,customDates,pin,history,lastDate,periodicReports,ready]);
+
+  // ─── Helpers ───────────────────────────────────────────────────────────────
+  const ck = s=>`${wi.key}-${s}`;
+  const activeCK = tab==="w3"?ck("w3"):tab==="w2"?ck("w2"):ck("wknd");
+  const isChecked = id=>!!(checked[activeCK]?.[id]);
+  const toggle = id=>setChecked(p=>({...p,[activeCK]:{...(p[activeCK]||{}),[id]:!p[activeCK]?.[id]}}));
+  const getSwap = id=>swapped[activeCK]?.[id]||null;
+  const doSwap = (id,to)=>{setSwapped(p=>({...p,[activeCK]:{...(p[activeCK]||{}),[id]:to}}));setModal(null);};
+  const resetSwap = id=>setSwapped(p=>{const c={...p,[activeCK]:{...(p[activeCK]||{})}};delete c[activeCK][id];return c;});
+
+  const canEditMeta = tab==="w2"||tab==="wknd";
+  const nameKey=(t,pic)=>`${t}|${pic}`;
+  const getDisplayName=pic=>customNames[nameKey(tab,pic)]||pic;
+  const getDisplayDate=()=>customDates[tab]||(tab==="wknd"?wi.weekendLabel:wi.weekLabel);
+
+  function commitName(key,val){setCustomNames(p=>({...p,[key]:val.trim()||key.split("|")[1]}));setEditingName(null);}
+  function commitDate(tk,val){setCustomDates(p=>({...p,[tk]:val.trim()}));setEditingDate(null);}
+
+  // ─── Daily snapshot & auto-reset ──────────────────────────────────────────
+  const todayStr = () => new Date().toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric",year:"numeric"});
+  const todayKey = () => new Date().toISOString().slice(0,10);
+
+  function takeSnapshot(currentChecked, currentCols, currentPicList) {
+    const label = todayStr();
+    const key   = todayKey();
+    const perPic = currentPicList.map(pic => {
+      const tasks = currentCols[pic]?.tasks || [];
+      const done  = tasks.filter(t => !!(currentChecked[`${wi.key}-w3`]?.[t.id] || currentChecked[`${wi.key}-w2`]?.[t.id] || currentChecked[`${wi.key}-wknd`]?.[t.id])).length;
+      const taskList = tasks.map(t => ({
+        text: t.text,
+        done: !!(currentChecked[`${wi.key}-w3`]?.[t.id] || currentChecked[`${wi.key}-w2`]?.[t.id] || currentChecked[`${wi.key}-wknd`]?.[t.id]),
+      }));
+      return { pic, done, total: tasks.length, tasks: taskList };
+    });
+    return { key, label, perPic };
+  }
+
+  // Check every minute if the date has rolled over → snapshot + reset
+  useEffect(() => {
+    if (!ready) return;
+    const check = () => {
+      const today = todayKey();
+      if (lastDate && lastDate !== today) {
+        // Take snapshot of yesterday before resetting
+        const snap = takeSnapshot(checked, cols, picList);
+        setHistory(prev => {
+          const without = prev.filter(h => h.key !== snap.key);
+          return [snap, ...without].slice(0, 60); // keep 60 days
+        });
+        // Clear today's checkmarks
+        setChecked({});
+        setLastDate(today);
+      } else if (!lastDate) {
+        setLastDate(today);
+      }
+    };
+    check();
+    const t = setInterval(check, 60000);
+    return () => clearInterval(t);
+  }, [ready, lastDate, checked]);
+
+  // ─── Column builders ───────────────────────────────────────────────────────
+  const build3=()=>{
+    const rot=ROTATION[wi.rotIdx];
+    const cols=Object.fromEntries(PICS.map(p=>[p,{tasks:[]}]));
+    PICS.forEach(pic=>(TASK_GROUPS[rot[pic]]||[]).forEach(task=>{
+      const to=getSwap(task.id)||pic; cols[to].tasks.push({...task,origPic:pic});
+    }));
+    wdCustomTasks.forEach(task=>{const to=getSwap(task.id)||task.pic;if(cols[to])cols[to].tasks.push({...task,origPic:task.pic,isCustom:true});});
+    return cols;
+  };
+  // Admin task IDs — always stay together with one PIC on 2-PIC tab
+  const ADMIN_IDS = new Set(["cl1","cl2","cl3","cl4"]);
+
+  const build2=()=>{
+    const rot=ROTATION[wi.rotIdx];
+    const present=PICS.filter(p=>p!==absentPic);
+    const cols=Object.fromEntries(present.map(p=>[p,{tasks:[]}]));
+    // Collect ALL tasks from all 3 PICs then split evenly between the 2 present
+    const allTasks=[];
+    PICS.forEach(pic=>(TASK_GROUPS[rot[pic]]||[]).forEach(task=>{
+      allTasks.push({...task,origPic:pic,coverage:pic===absentPic});
+    }));
+    // Distribute evenly: alternate between present PICs
+    allTasks.forEach((task,i)=>{
+      const ov=getSwap(task.id);
+      const to=ov&&present.includes(ov)?ov:present[i%2];
+      cols[to].tasks.push(task);
+    });
+    // Add custom weekday tasks
+    wdCustomTasks.forEach(task=>{
+      const ov=getSwap(task.id);const def=present.includes(task.pic)?task.pic:present[0];
+      const to=ov&&present.includes(ov)?ov:def;
+      if(cols[to])cols[to].tasks.push({...task,origPic:task.pic,isCustom:true});
+    });
+    return cols;
+  };
+  const buildWknd=()=>{
+    const all=[...WEEKEND_BASE,...customTasks];
+    if(wknd.count===1)return{[wknd.p1]:{tasks:all}};
+    const cols={[wknd.p1]:{tasks:[]},[wknd.p2]:{tasks:[]}};
+    all.forEach((task,idx)=>{
+      const ov=getSwap(task.id);
+      const to=ov===wknd.p1||ov===wknd.p2?ov:idx%2===0?wknd.p1:wknd.p2;
+      cols[to].tasks.push(task);
+    });
+    return cols;
+  };
+
+  const cols=tab==="w3"?build3():tab==="w2"?build2():buildWknd();
+  const picList=Object.keys(cols);
+  const swapOpts=tab==="wknd"&&wknd.count===2?[wknd.p1,wknd.p2]:tab==="w2"?PICS.filter(p=>p!==absentPic):PICS;
+
+  function addTask(){
+    if(!addInput.trim())return;
+    if(tab==="wknd")setCustomTasks(p=>[...p,{id:`ct-${Date.now()}`,text:addInput.trim()}]);
+    else setWdCustomTasks(p=>[...p,{id:`wd-${Date.now()}`,text:addInput.trim(),pic:addPic}]);
+    setAddInput("");
+  }
+
+  // ─── Dashboard stats ───────────────────────────────────────────────────────
+  const allTasks = Object.values(cols).flatMap(c=>c.tasks);
+  const totalTasks = allTasks.length;
+  const totalDone = allTasks.filter(t=>isChecked(t.id)).length;
+  const totalPct = totalTasks ? Math.round(totalDone/totalTasks*100) : 0;
+  const perPic = picList.map(pic=>{
+    const tasks=cols[pic].tasks;
+    const done=tasks.filter(t=>isChecked(t.id)).length;
+    return {pic,total:tasks.length,done,pct:tasks.length?Math.round(done/tasks.length*100):0};
+  });
+
+  function handlePinSubmit(){
+    if(pinModal==="unlock"){
+      if(pinInput===pin){setLocked(false);setPinModal(null);setPinInput("");setPinError("");}
+      else{setPinError("Incorrect PIN.");setPinInput("");}
+    } else {
+      if(pinInput.length<4){setPinError("Min 4 digits.");return;}
+      setPin(pinInput);setPinModal(null);setPinInput("");setPinError("");
+    }
+  }
+
+  if(!ready) return <div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100vh",background:"#0f172a",color:"#94a3b8",fontFamily:"system-ui"}}>Loading board…</div>;
+
+  const ROTATION_LABELS = ["Cycle A","Cycle B","Cycle C"];
+
+  return (
+    <div style={{fontFamily:"'Plus Jakarta Sans','DM Sans',system-ui,sans-serif",minHeight:"100vh",background:"#0f172a",color:"#f8fafc"}}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap');
+        *{box-sizing:border-box;margin:0;padding:0;}
+        ::-webkit-scrollbar{width:5px;height:5px;}
+        ::-webkit-scrollbar-thumb{background:#334155;border-radius:99px;}
+        ::-webkit-scrollbar-track{background:transparent;}
+        button,input,select{font-family:inherit;}
+        button{cursor:pointer;}
+        .task-in{animation:slideIn 0.25s ease;}
+        @keyframes slideIn{from{opacity:0;transform:translateY(-6px);}to{opacity:1;transform:translateY(0);}}
+        .pulse{animation:pulse 2s infinite;}
+        @keyframes pulse{0%,100%{opacity:1;}50%{opacity:0.6;}}
+        .tab-btn{transition:all 0.2s;}
+        .tab-btn:hover{background:rgba(255,255,255,0.08)!important;}
+        .view-btn{transition:all 0.2s;}
+        .view-btn:hover{opacity:0.85;}
+        .card-enter{animation:cardIn 0.3s ease;}
+        @keyframes cardIn{from{opacity:0;transform:scale(0.97);}to{opacity:1;transform:scale(1);}}
+      `}</style>
+
+      {/* ══ TOP NAV ══════════════════════════════════════════════════════════ */}
+      <div style={{background:"rgba(15,23,42,0.95)",backdropFilter:"blur(20px)",borderBottom:"1px solid rgba(255,255,255,0.07)",position:"sticky",top:0,zIndex:60}}>
+        <div style={{maxWidth:1440,margin:"0 auto",padding:"0 20px"}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 0 0",gap:12,flexWrap:"wrap"}}>
+
+            {/* Brand */}
+            <div style={{display:"flex",alignItems:"center",gap:12}}>
+              <div style={{background:"linear-gradient(135deg,#6366f1,#a855f7,#ec4899)",borderRadius:12,width:40,height:40,display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 0 20px rgba(99,102,241,0.5)"}}>
+                <span style={{fontSize:18}}>⚡</span>
+              </div>
+              <div>
+                <div style={{fontSize:16,fontWeight:900,color:"#f8fafc",letterSpacing:"-0.02em"}}>PIC Task Board</div>
+                <div style={{fontSize:11,color:"#64748b",fontWeight:500}}>
+                  {tab==="wknd"?`Weekend · ${getDisplayDate()}`:`Week of ${getDisplayDate()}`}
+                  {canEditMeta&&(
+                    <button onClick={()=>{setEditingDate(tab);setDateInput(getDisplayDate());}}
+                      style={{background:"none",border:"none",color:"#475569",cursor:"pointer",fontSize:11,marginLeft:4}}>✏</button>
+                  )}
+                  {editingDate===tab&&(
+                    <input autoFocus value={dateInput} onChange={e=>setDateInput(e.target.value)}
+                      onBlur={()=>commitDate(tab,dateInput)} onKeyDown={e=>{if(e.key==="Enter")commitDate(tab,dateInput);if(e.key==="Escape")setEditingDate(null);}}
+                      style={{fontSize:11,padding:"1px 6px",borderRadius:5,border:"1px solid #6366f1",background:"#1e293b",color:"#f8fafc",width:130,marginLeft:4}}/>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Right controls */}
+            <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+              {/* Rotation badge */}
+              <div style={{background:"linear-gradient(135deg,rgba(99,102,241,0.2),rgba(168,85,247,0.2))",border:"1px solid rgba(99,102,241,0.3)",borderRadius:8,padding:"5px 12px",display:"flex",alignItems:"center",gap:6}}>
+                <span style={{fontSize:10,fontWeight:800,color:"#a5b4fc",letterSpacing:"0.08em"}}>ROTATION</span>
+                <span style={{fontSize:13,fontWeight:900,color:"#c4b5fd"}}>{ROTATION_LABELS[wi.rotIdx]}</span>
+                <span style={{fontSize:10,color:"#64748b"}}>Wk {wi.weekNum}</span>
+              </div>
+              {/* Week nav */}
+              {[{l:"‹",o:-1},{l:"Today",o:0},{l:"›",o:1}].map(({l,o})=>(
+                <button key={l} onClick={()=>!locked&&(o===0?setWeekOffset(0):setWeekOffset(x=>x+o))}
+                  style={{padding:"5px 12px",borderRadius:7,border:"1px solid rgba(255,255,255,0.1)",background:o===0&&weekOffset===0?"rgba(99,102,241,0.25)":"rgba(255,255,255,0.05)",color:locked?"#334155":"#cbd5e1",fontSize:o===0?12:16,fontWeight:700,cursor:locked?"not-allowed":"pointer",opacity:locked?0.4:1}}>
+                  {l}
+                </button>
+              ))}
+              {/* Lock */}
+              <button onClick={()=>locked?setPinModal("unlock"):(setLocked(true),setView("board"))}
+                style={{display:"flex",alignItems:"center",gap:6,padding:"6px 14px",borderRadius:8,border:`1px solid ${locked?"rgba(245,158,11,0.4)":"rgba(34,197,94,0.4)"}`,background:locked?"rgba(245,158,11,0.1)":"rgba(34,197,94,0.1)",color:locked?"#fbbf24":"#4ade80",fontSize:12,fontWeight:800}}>
+                {locked?"🔒":"🔓"}{locked?"Locked":"Unlocked"}
+              </button>
+              {!locked&&<button onClick={()=>{setPinModal("setpin");setPinInput("");setPinError("");}}
+                style={{padding:"6px 10px",borderRadius:8,border:"1px solid rgba(255,255,255,0.1)",background:"rgba(255,255,255,0.05)",color:"#64748b",fontSize:11,fontWeight:600}}>⚙ PIN</button>}
+            </div>
+          </div>
+
+          {/* Tab + view row */}
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginTop:4}}>
+            <div style={{display:"flex",gap:0}}>
+              {[{id:"w3",label:"3 PICs"},{id:"w2",label:"2 PICs"},{id:"wknd",label:"Weekend"}].map(t=>(
+                <button key={t.id} className="tab-btn" onClick={()=>setTab(t.id)}
+                  style={{padding:"8px 18px",fontSize:12,fontWeight:700,background:"transparent",border:"none",
+                    color:tab===t.id?"#a5b4fc":"#475569",
+                    borderBottom:`2px solid ${tab===t.id?"#6366f1":"transparent"}`,
+                    borderRadius:"6px 6px 0 0",marginBottom:-1}}>
+                  {t.label}
+                </button>
+              ))}
+            </div>
+            {/* View toggle */}
+            <div style={{display:"flex",gap:4,padding:"0 0 4px"}}>
+              {[{id:"board",icon:"⬛",label:"Board"},{id:"dash",icon:"📊",label:"Dashboard 🔒"}].map(v=>(
+                <button key={v.id} className="view-btn"
+                  onClick={()=>{ if(v.id==="dash"&&locked){setPinModal("unlock");return;} setView(v.id); }}
+                  style={{padding:"5px 14px",borderRadius:8,
+                    border:`1px solid ${v.id==="dash"&&locked?"rgba(245,158,11,0.35)":"rgba(255,255,255,0.08)"}`,
+                    background:view===v.id?"rgba(99,102,241,0.25)":v.id==="dash"&&locked?"rgba(245,158,11,0.06)":"rgba(255,255,255,0.03)",
+                    color:view===v.id?"#a5b4fc":v.id==="dash"&&locked?"#78716c":"#475569",
+                    fontSize:12,fontWeight:700,display:"flex",gap:5,alignItems:"center"}}>
+                  <span>{v.icon}</span>{v.id==="dash"&&locked?"Dashboard 🔒":v.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ══ LOCKED BANNER ═══════════════════════════════════════════════════ */}
+      {locked&&(
+        <div style={{background:"linear-gradient(90deg,rgba(245,158,11,0.12),rgba(234,179,8,0.08))",borderBottom:"1px solid rgba(245,158,11,0.2)",padding:"7px 20px",textAlign:"center",fontSize:12,color:"#fbbf24",fontWeight:600}}>
+          🔒 Locked — PICs can check tasks & swap. Manager PIN required for structural changes.
+        </div>
+      )}
+
+      {/* ══ CONTEXT CONTROLS ════════════════════════════════════════════════ */}
+      {!locked&&(
+        <div style={{maxWidth:1440,margin:"0 auto",padding:"12px 20px 0"}}>
+          {tab==="w2"&&(
+            <div style={{background:"rgba(245,158,11,0.08)",border:"1px solid rgba(245,158,11,0.25)",borderLeft:"3px solid #f59e0b",borderRadius:10,padding:"10px 16px",display:"flex",alignItems:"center",gap:14,flexWrap:"wrap"}}>
+              <span style={{fontSize:12,fontWeight:700,color:"#fbbf24"}}>⚠ Out today:</span>
+              {PICS.map(p=>(
+                <label key={p} style={{display:"flex",alignItems:"center",gap:6,fontSize:12,fontWeight:absentPic===p?700:400,color:absentPic===p?"#fbbf24":"#94a3b8",cursor:"pointer"}}>
+                  <input type="radio" checked={absentPic===p} onChange={()=>setAbsentPic(p)} style={{accentColor:"#f59e0b"}}/>{p}
+                </label>
+              ))}
+            </div>
+          )}
+          {tab==="wknd"&&(
+            <div style={{background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.08)",borderRadius:10,padding:"10px 16px",display:"flex",alignItems:"center",gap:14,flexWrap:"wrap"}}>
+              <span style={{fontSize:12,fontWeight:700,color:"#94a3b8"}}>Weekend PICs:</span>
+              {[1,2].map(n=>(
+                <label key={n} style={{display:"flex",alignItems:"center",gap:6,fontSize:12,fontWeight:wknd.count===n?700:400,color:wknd.count===n?"#a5b4fc":"#64748b",cursor:"pointer"}}>
+                  <input type="radio" checked={wknd.count===n} onChange={()=>setWknd(w=>({...w,count:n}))} style={{accentColor:"#6366f1"}}/>{n} PIC{n===2?"s":""}
+                </label>
+              ))}
+              <select value={wknd.p1} onChange={e=>setWknd(w=>({...w,p1:e.target.value}))} style={{padding:"4px 8px",borderRadius:6,border:"1px solid rgba(255,255,255,0.1)",background:"#1e293b",color:"#f8fafc",fontSize:12}}>
+                {PICS.map(p=><option key={p} value={p}>{p}</option>)}
+              </select>
+              {wknd.count===2&&(<>
+                <span style={{color:"#334155"}}>+</span>
+                <select value={wknd.p2} onChange={e=>setWknd(w=>({...w,p2:e.target.value}))} style={{padding:"4px 8px",borderRadius:6,border:"1px solid rgba(255,255,255,0.1)",background:"#1e293b",color:"#f8fafc",fontSize:12}}>
+                  {PICS.filter(p=>p!==wknd.p1).map(p=><option key={p} value={p}>{p}</option>)}
+                </select>
+              </>)}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ════════════════════════════════════════════════════════════════════
+          DASHBOARD VIEW
+      ════════════════════════════════════════════════════════════════════ */}
+      {view==="dash"&&(
+        <div style={{maxWidth:1440,margin:"0 auto",padding:"24px 20px 48px"}}>
+          {/* Overall banner */}
+          <div style={{background:"linear-gradient(135deg,#1e1b4b,#312e81,#1e1b4b)",border:"1px solid rgba(99,102,241,0.3)",borderRadius:20,padding:"28px 32px",marginBottom:20,display:"flex",alignItems:"center",gap:32,flexWrap:"wrap",boxShadow:"0 0 40px rgba(99,102,241,0.15)"}}>
+            <div style={{position:"relative",width:80,height:80,flexShrink:0}}>
+              <RingChart pct={totalPct} color="#6366f1" size={80} stroke={9}/>
+              <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column"}}>
+                <div style={{fontSize:18,fontWeight:900,color:"#f8fafc",lineHeight:1}}>{totalPct}%</div>
+              </div>
+            </div>
+            <div style={{flex:1}}>
+              <div style={{fontSize:24,fontWeight:900,color:"#f8fafc",letterSpacing:"-0.03em",marginBottom:4}}>
+                {totalDone} of {totalTasks} Tasks Complete
+              </div>
+              <div style={{fontSize:13,color:"#94a3b8",marginBottom:10}}>
+                {totalTasks-totalDone} remaining · {tab==="wknd"?`Weekend ${wi.weekendLabel}`:`Week of ${wi.weekLabel}`} · {ROTATION_LABELS[wi.rotIdx]}
+              </div>
+              <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                <span style={{background:"rgba(16,185,129,0.15)",border:"1px solid rgba(16,185,129,0.3)",color:"#34d399",fontSize:11,fontWeight:700,padding:"3px 10px",borderRadius:99}}>✓ {totalDone} Done</span>
+                <span style={{background:"rgba(245,158,11,0.12)",border:"1px solid rgba(245,158,11,0.3)",color:"#fbbf24",fontSize:11,fontWeight:700,padding:"3px 10px",borderRadius:99}}>⏳ {totalTasks-totalDone} Remaining</span>
+                <span style={{background:"rgba(99,102,241,0.12)",border:"1px solid rgba(99,102,241,0.3)",color:"#a5b4fc",fontSize:11,fontWeight:700,padding:"3px 10px",borderRadius:99}}>🔄 {ROTATION_LABELS[wi.rotIdx]}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Per-PIC cards */}
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(280px,1fr))",gap:16,marginBottom:20}}>
+            {perPic.map(({pic,total,done,pct},i)=>{
+              const th=THEMES[PICS.indexOf(pic)%3];
+              const todo=total-done;
+              return(
+                <div key={pic} className="card-enter" style={{background:`linear-gradient(135deg,${th.card}22,${th.card}11)`,border:`1px solid ${th.card}44`,borderRadius:16,padding:20,boxShadow:`0 0 24px ${th.glow}`}}>
+                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
+                    <div style={{display:"flex",alignItems:"center",gap:10}}>
+                      <div style={{width:44,height:44,borderRadius:13,background:`linear-gradient(135deg,${th.card},${th.dark})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,fontWeight:900,color:"#fff",boxShadow:`0 4px 14px ${th.glow}`}}>
+                        {(canEditMeta?getDisplayName(pic):pic).charAt(0)}
+                      </div>
+                      <div>
+                        <div style={{fontSize:15,fontWeight:800,color:"#f8fafc"}}>{canEditMeta?getDisplayName(pic):pic}</div>
+                        <div style={{fontSize:10,fontWeight:700,color:th.card,letterSpacing:"0.1em"}}>PIC {PICS.indexOf(pic)+1}</div>
+                      </div>
+                    </div>
+                    <div style={{textAlign:"right"}}>
+                      <div style={{fontSize:28,fontWeight:900,color:"#f8fafc",lineHeight:1}}>{pct}%</div>
+                      <div style={{fontSize:10,color:"#64748b"}}>{done}/{total}</div>
+                    </div>
+                  </div>
+                  <MiniBar pct={pct} color={th.card}/>
+                  <div style={{display:"flex",gap:8,marginTop:12}}>
+                    <div style={{flex:1,background:"rgba(16,185,129,0.1)",border:"1px solid rgba(16,185,129,0.2)",borderRadius:8,padding:"8px 10px",textAlign:"center"}}>
+                      <div style={{fontSize:20,fontWeight:900,color:"#34d399"}}>{done}</div>
+                      <div style={{fontSize:10,color:"#6ee7b7",fontWeight:600}}>DONE</div>
+                    </div>
+                    <div style={{flex:1,background:"rgba(245,158,11,0.1)",border:"1px solid rgba(245,158,11,0.2)",borderRadius:8,padding:"8px 10px",textAlign:"center"}}>
+                      <div style={{fontSize:20,fontWeight:900,color:"#fbbf24"}}>{todo}</div>
+                      <div style={{fontSize:10,color:"#fcd34d",fontWeight:600}}>TO DO</div>
+                    </div>
+                    <div style={{flex:1,background:"rgba(99,102,241,0.1)",border:"1px solid rgba(99,102,241,0.2)",borderRadius:8,padding:"8px 10px",textAlign:"center"}}>
+                      <div style={{fontSize:20,fontWeight:900,color:"#a5b4fc"}}>{total}</div>
+                      <div style={{fontSize:10,color:"#818cf8",fontWeight:600}}>TOTAL</div>
+                    </div>
+                  </div>
+                  {/* Remaining tasks preview */}
+                  {todo>0&&(
+                    <div style={{marginTop:12,borderTop:"1px solid rgba(255,255,255,0.06)",paddingTop:10}}>
+                      <div style={{fontSize:10,fontWeight:700,color:"#475569",marginBottom:6,letterSpacing:"0.08em"}}>REMAINING</div>
+                      {cols[pic]?.tasks.filter(t=>!isChecked(t.id)).slice(0,3).map(t=>(
+                        <div key={t.id} style={{fontSize:11,color:"#94a3b8",padding:"3px 0",borderBottom:"1px solid rgba(255,255,255,0.03)",display:"flex",gap:6,alignItems:"flex-start"}}>
+                          <span style={{color:th.card,flexShrink:0}}>›</span>{t.text}
+                        </div>
+                      ))}
+                      {todo>3&&<div style={{fontSize:10,color:"#475569",marginTop:4,fontStyle:"italic"}}>+{todo-3} more tasks…</div>}
+                    </div>
+                  )}
+                  {todo===0&&done>0&&(
+                    <div style={{marginTop:12,borderTop:"1px solid rgba(16,185,129,0.15)",paddingTop:10,textAlign:"center"}}>
+                      <span style={{fontSize:20}}>🎉</span>
+                      <div style={{fontSize:11,color:"#34d399",fontWeight:700,marginTop:2}}>All tasks complete!</div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* ── Daily History ─────────────────────────────────────────────── */}
+          <div style={{background:"rgba(255,255,255,0.02)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:16,padding:20,marginBottom:20}}>
+            <div style={{fontSize:13,fontWeight:800,color:"#94a3b8",letterSpacing:"0.06em",marginBottom:14,display:"flex",alignItems:"center",gap:10}}>
+              📅 DAILY COMPLETION HISTORY
+              <span style={{fontSize:10,color:"#334155",fontWeight:500}}>(auto-saves at midnight · last 60 days)</span>
+            </div>
+            {history.length===0?(
+              <div style={{fontSize:12,color:"#334155",fontStyle:"italic",textAlign:"center",padding:"20px 0"}}>
+                No history yet — records will appear here after the first midnight reset.
+              </div>
+            ):(
+              <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                {history.map(day=>{
+                  const totalD=day.perPic.reduce((a,p)=>a+p.done,0);
+                  const totalT=day.perPic.reduce((a,p)=>a+p.total,0);
+                  const pct=totalT?Math.round(totalD/totalT*100):0;
+                  const isOpen=historyDay===day.key;
+                  const color=pct===100?"#34d399":pct>=50?"#fbbf24":"#f87171";
+                  const bg=pct===100?"rgba(16,185,129,0.08)":pct>=50?"rgba(245,158,11,0.08)":"rgba(248,113,113,0.08)";
+                  const border=pct===100?"rgba(16,185,129,0.25)":pct>=50?"rgba(245,158,11,0.25)":"rgba(248,113,113,0.25)";
+                  return(
+                    <div key={day.key} style={{background:bg,border:`1px solid ${border}`,borderRadius:12,overflow:"hidden"}}>
+                      <div onClick={()=>setHistoryDay(isOpen?null:day.key)}
+                        style={{display:"flex",alignItems:"center",gap:14,padding:"12px 16px",cursor:"pointer"}}>
+                        {/* Pct circle */}
+                        <div style={{width:44,height:44,borderRadius:99,border:`3px solid ${color}`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,background:`${color}15`}}>
+                          <span style={{fontSize:12,fontWeight:900,color}}>{pct}%</span>
+                        </div>
+                        <div style={{flex:1}}>
+                          <div style={{fontSize:13,fontWeight:700,color:"#f8fafc"}}>{day.label}</div>
+                          <div style={{fontSize:11,color:"#64748b",marginTop:2}}>
+                            {totalD} of {totalT} tasks completed
+                            {pct===100&&<span style={{marginLeft:8,color:"#34d399",fontWeight:700}}>🎉 Perfect day!</span>}
+                          </div>
+                        </div>
+                        {/* Per-PIC mini badges */}
+                        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                          {day.perPic.map((p,pi)=>{
+                            const th=THEMES[PICS.indexOf(p.pic)%3]||THEMES[pi%3];
+                            const pp=p.total?Math.round(p.done/p.total*100):0;
+                            return(
+                              <div key={p.pic} style={{background:`${th.card}20`,border:`1px solid ${th.card}40`,borderRadius:8,padding:"4px 10px",textAlign:"center"}}>
+                                <div style={{fontSize:11,fontWeight:800,color:th.card}}>{pp}%</div>
+                                <div style={{fontSize:9,color:"#475569",fontWeight:600}}>{p.pic.split(" ")[0]}</div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                        <span style={{fontSize:14,color:"#334155",flexShrink:0}}>{isOpen?"▲":"▼"}</span>
+                      </div>
+                      {/* Expanded task breakdown */}
+                      {isOpen&&(
+                        <div style={{padding:"0 16px 16px",borderTop:"1px solid rgba(255,255,255,0.05)"}}>
+                          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:12,marginTop:12}}>
+                            {day.perPic.map((p,pi)=>{
+                              const th=THEMES[PICS.indexOf(p.pic)%3]||THEMES[pi%3];
+                              return(
+                                <div key={p.pic} style={{background:"rgba(255,255,255,0.03)",borderRadius:10,padding:12}}>
+                                  <div style={{fontSize:12,fontWeight:800,color:th.card,marginBottom:8}}>
+                                    {p.pic} — {p.done}/{p.total} done
+                                  </div>
+                                  {p.tasks.map((t,ti)=>(
+                                    <div key={ti} style={{fontSize:11,color:t.done?"#4ade80":"#64748b",padding:"3px 0",display:"flex",gap:6,alignItems:"flex-start",borderBottom:"1px solid rgba(255,255,255,0.03)"}}>
+                                      <span style={{flexShrink:0}}>{t.done?"✓":"○"}</span>
+                                      <span style={{textDecoration:t.done?"line-through":"none",opacity:t.done?0.7:1}}>{t.text}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Rotation schedule */}
+          <div style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:16,padding:20}}>
+            <div style={{fontSize:13,fontWeight:800,color:"#94a3b8",letterSpacing:"0.06em",marginBottom:14}}>WEEKLY ROTATION SCHEDULE</div>
+            <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+              {ROTATION.map((rot,ri)=>(
+                <div key={ri} style={{flex:1,minWidth:200,background:ri===wi.rotIdx?"rgba(99,102,241,0.12)":"rgba(255,255,255,0.02)",border:`1px solid ${ri===wi.rotIdx?"rgba(99,102,241,0.4)":"rgba(255,255,255,0.06)"}`,borderRadius:12,padding:14}}>
+                  <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
+                    <div style={{fontSize:12,fontWeight:800,color:ri===wi.rotIdx?"#a5b4fc":"#475569"}}>{ROTATION_LABELS[ri]}</div>
+                    {ri===wi.rotIdx&&<span style={{fontSize:9,fontWeight:800,background:"rgba(99,102,241,0.3)",color:"#a5b4fc",padding:"2px 7px",borderRadius:99,letterSpacing:"0.08em"}}>THIS WEEK</span>}
+                  </div>
+                  {PICS.map((pic,pi)=>(
+                    <div key={pic} style={{display:"flex",alignItems:"center",gap:8,padding:"4px 0",borderBottom:"1px solid rgba(255,255,255,0.04)"}}>
+                      <div style={{width:24,height:24,borderRadius:7,background:`linear-gradient(135deg,${THEMES[pi].card},${THEMES[pi].dark})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:900,color:"#fff",flexShrink:0}}>
+                        {pic.charAt(0)}
+                      </div>
+                      <div style={{fontSize:11,color:"#94a3b8"}}>{pic}</div>
+                      <div style={{marginLeft:"auto",fontSize:10,fontWeight:700,color:THEMES[pi].card,background:`${THEMES[pi].card}18`,padding:"2px 7px",borderRadius:99}}>
+                        {rot[pic]==="group1"?"PIC Duties — Group 1 (9 tasks)":rot[pic]==="group2"?"PIC Duties — Group 2 (9 tasks)":"PIC Duties — Group 3 (9 tasks)"}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ════════════════════════════════════════════════════════════════════
+          BOARD VIEW
+      ════════════════════════════════════════════════════════════════════ */}
+      {view==="board"&&(
+        <div style={{maxWidth:1440,margin:"0 auto",padding:"16px 20px 48px",display:"flex",gap:16,alignItems:"flex-start",flexWrap:"wrap"}}>
+          {picList.map((pic,colIdx)=>{
+            const {tasks}=cols[pic];
+            const gi=PICS.indexOf(pic);
+            const th=THEMES[gi]||THEMES[0];
+            const done=tasks.filter(t=>isChecked(t.id));
+            const todo=tasks.filter(t=>!isChecked(t.id));
+            const pct=tasks.length?Math.round(done.length/tasks.length*100):0;
+            const mySwapOpts=swapOpts.filter(p=>p!==pic);
+            const displayName=canEditMeta?getDisplayName(pic):pic;
+
+            return(
+              <div key={pic} style={{flex:1,minWidth:300,display:"flex",flexDirection:"column",gap:0}}>
+                {/* ── Column header ── */}
+                <div style={{background:`linear-gradient(160deg,${th.card} 0%,${th.dark} 100%)`,borderRadius:"16px 16px 0 0",padding:"20px 18px 0",boxShadow:`0 8px 32px ${th.glow}`}}>
+                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
+                    <div style={{display:"flex",alignItems:"center",gap:12}}>
+                      <div style={{position:"relative"}}>
+                        <div style={{width:48,height:48,borderRadius:15,background:"rgba(255,255,255,0.2)",border:"2px solid rgba(255,255,255,0.35)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,fontWeight:900,color:"#fff",backdropFilter:"blur(8px)"}}>
+                          {displayName.charAt(0)}
+                        </div>
+                        {pct===100&&<div style={{position:"absolute",bottom:-3,right:-3,fontSize:12}}>✅</div>}
+                      </div>
+                      <div>
+                        {editingName===nameKey(tab,pic)?(
+                          <input autoFocus value={nameInput} onChange={e=>setNameInput(e.target.value)}
+                            onBlur={()=>commitName(nameKey(tab,pic),nameInput)}
+                            onKeyDown={e=>{if(e.key==="Enter")commitName(nameKey(tab,pic),nameInput);if(e.key==="Escape")setEditingName(null);}}
+                            style={{fontSize:16,fontWeight:800,background:"rgba(255,255,255,0.2)",border:"2px solid rgba(255,255,255,0.6)",borderRadius:7,color:"#fff",padding:"2px 8px",width:130,outline:"none"}}/>
+                        ):(
+                          <div style={{display:"flex",alignItems:"center",gap:6}}>
+                            <div style={{fontSize:17,fontWeight:800,color:"#fff"}}>{displayName}</div>
+                            {canEditMeta&&(
+                              <button onClick={()=>{setEditingName(nameKey(tab,pic));setNameInput(displayName);}}
+                                title="Edit name"
+                                style={{display:"flex",alignItems:"center",gap:4,background:"rgba(255,255,255,0.18)",border:"1px solid rgba(255,255,255,0.35)",borderRadius:6,color:"#fff",fontSize:10,fontWeight:700,cursor:"pointer",padding:"3px 8px",letterSpacing:"0.04em",whiteSpace:"nowrap"}}>
+                                ✏ Edit Name
+                              </button>
+                            )}
+                          </div>
+                        )}
+                        <div style={{fontSize:10,fontWeight:700,color:"rgba(255,255,255,0.6)",letterSpacing:"0.1em",marginTop:1}}>PIC {gi+1}</div>
+                      </div>
+                    </div>
+                    <div style={{textAlign:"right"}}>
+                      <div style={{position:"relative",width:56,height:56}}>
+                        <RingChart pct={pct} color={th.card} size={56} stroke={6}/>
+                        <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                          <span style={{fontSize:13,fontWeight:900,color:"#fff"}}>{pct}%</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  {/* Stat chips */}
+                  <div style={{display:"flex",gap:6,paddingBottom:14}}>
+                    <div style={{flex:1,background:"rgba(0,0,0,0.2)",borderRadius:8,padding:"5px 0",textAlign:"center"}}>
+                      <div style={{fontSize:16,fontWeight:900,color:"#fff"}}>{todo.length}</div>
+                      <div style={{fontSize:9,color:"rgba(255,255,255,0.6)",fontWeight:700,letterSpacing:"0.08em"}}>TO DO</div>
+                    </div>
+                    <div style={{flex:1,background:"rgba(16,185,129,0.25)",borderRadius:8,padding:"5px 0",textAlign:"center"}}>
+                      <div style={{fontSize:16,fontWeight:900,color:"#6ee7b7"}}>{done.length}</div>
+                      <div style={{fontSize:9,color:"rgba(110,231,183,0.7)",fontWeight:700,letterSpacing:"0.08em"}}>DONE</div>
+                    </div>
+                    <div style={{flex:1,background:"rgba(0,0,0,0.2)",borderRadius:8,padding:"5px 0",textAlign:"center"}}>
+                      <div style={{fontSize:16,fontWeight:900,color:"#fff"}}>{tasks.length}</div>
+                      <div style={{fontSize:9,color:"rgba(255,255,255,0.6)",fontWeight:700,letterSpacing:"0.08em"}}>TOTAL</div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* ── Task body ── */}
+                <div style={{background:"#111827",border:"1px solid rgba(255,255,255,0.06)",borderTop:"none",borderRadius:"0 0 16px 16px",padding:"12px 12px 14px",minHeight:100}}>
+
+                  {/* TO DO section */}
+                  {todo.length>0&&(
+                    <div style={{marginBottom:12}}>
+                      <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8}}>
+                        <div style={{width:6,height:6,borderRadius:99,background:th.card,boxShadow:`0 0 6px ${th.card}`}}/>
+                        <span style={{fontSize:10,fontWeight:800,color:"#475569",letterSpacing:"0.1em"}}>TO DO</span>
+                        <span style={{fontSize:10,fontWeight:700,background:`${th.card}22`,color:th.card,padding:"1px 7px",borderRadius:99,marginLeft:2}}>{todo.length}</span>
+                      </div>
+                      {/* Priority group banner */}
+                      {todo.some(t=>t.priorityGroup==="admin")&&(
+                        <div style={{background:"linear-gradient(135deg,rgba(239,68,68,0.12),rgba(251,146,60,0.08))",border:"1px solid rgba(239,68,68,0.3)",borderLeft:"3px solid #ef4444",borderRadius:10,padding:"8px 12px",marginBottom:10}}>
+                          <div style={{fontSize:10,fontWeight:800,color:"#f87171",letterSpacing:"0.08em",display:"flex",alignItems:"center",gap:5}}>
+                            ⚡ MUST BE COMPLETED TOGETHER
+                          </div>
+                          <div style={{fontSize:10,color:"#64748b",marginTop:2}}>Complete all 4 tasks below as a set before moving on</div>
+                        </div>
+                      )}
+                      {todo.map(task=>(
+                        <div key={task.id} className="task-in">
+                          <TaskCard task={task} done={false} theme={th} swapOpts={mySwapOpts}
+                            locked={locked} isCoverage={task.coverage} isCustom={task.isCustom}
+                            isReassigned={!!getSwap(task.id)} isPriority={!!task.priority}
+                            onToggle={()=>toggle(task.id)}
+                            onReassign={()=>setModal({taskId:task.id,taskText:task.text,opts:mySwapOpts})}
+                            onReset={()=>resetSwap(task.id)}/>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* COMPLETED section */}
+                  {done.length>0&&(
+                    <div>
+                      <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8}}>
+                        <div style={{width:6,height:6,borderRadius:99,background:"#10b981",boxShadow:"0 0 6px #10b981"}}/>
+                        <span style={{fontSize:10,fontWeight:800,color:"#475569",letterSpacing:"0.1em"}}>COMPLETED</span>
+                        <span style={{fontSize:10,fontWeight:700,background:"rgba(16,185,129,0.15)",color:"#34d399",padding:"1px 7px",borderRadius:99,marginLeft:2}}>{done.length}</span>
+                      </div>
+                      {done.map(task=>(
+                        <div key={task.id} className="task-in">
+                          <TaskCard task={task} done={true} theme={th} swapOpts={[]}
+                            locked={locked} isCoverage={false} isCustom={task.isCustom}
+                            isReassigned={false}
+                            onToggle={()=>toggle(task.id)}
+                            onReassign={()=>{}} onReset={()=>{}}/>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {tasks.length===0&&(
+                    <div style={{color:"#334155",fontSize:12,textAlign:"center",padding:"32px 0",fontStyle:"italic"}}>No tasks assigned</div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* ══ MONTHLY REPORTS ═════════════════════════════════════════════════ */}
+      {view==="board"&&(
+        <div style={{maxWidth:1440,margin:"0 auto",padding:"0 20px 8px"}}>
+          <div style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(99,102,241,0.25)",borderRadius:16,padding:20}}>
+            {/* Header */}
+            <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16}}>
+              <div style={{background:"linear-gradient(135deg,#6366f1,#8b5cf6)",borderRadius:9,width:32,height:32,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0}}>📋</div>
+              <div>
+                <div style={{fontSize:13,fontWeight:800,color:"#f8fafc",letterSpacing:"0.02em"}}>Periodic Reports</div>
+                <div style={{fontSize:11,color:"#64748b"}}>Complete when received — any PIC can claim and complete</div>
+              </div>
+              <div style={{marginLeft:"auto",fontSize:11,color:"#4ade80",fontWeight:700}}>
+                {Object.values(periodicReports).filter(r=>r.done||r.notAvailable).length} / {PERIODIC_REPORTS.length} handled
+              </div>
+            </div>
+
+            {/* Report rows */}
+            <div style={{display:"flex",flexDirection:"column",gap:8}}>
+              {PERIODIC_REPORTS.map(report=>{
+                const state=periodicReports[report.id]||{done:false,completedBy:"",notAvailable:false};
+                const isDone=state.done||state.notAvailable;
+                const rowBg=state.notAvailable?"rgba(100,116,139,0.1)":state.done?"rgba(16,185,129,0.08)":"rgba(255,255,255,0.03)";
+                const rowBorder=state.notAvailable?"rgba(100,116,139,0.25)":state.done?"rgba(16,185,129,0.25)":"rgba(255,255,255,0.07)";
+                return(
+                  <div key={report.id} style={{background:rowBg,border:`1px solid ${rowBorder}`,borderRadius:10,padding:"12px 14px",display:"flex",alignItems:"center",gap:12,flexWrap:"wrap",transition:"all 0.2s"}}>
+                    {/* Checkbox */}
+                    <div onClick={()=>{
+                      if(state.notAvailable)return;
+                      setMonthlyReports(p=>({...p,[report.id]:{...p[report.id],done:!state.done}}));
+                    }} style={{width:22,height:22,borderRadius:6,flexShrink:0,cursor:state.notAvailable?"not-allowed":"pointer",
+                      background:state.done?"#10b981":state.notAvailable?"#334155":"transparent",
+                      border:`2px solid ${state.done?"#10b981":state.notAvailable?"#475569":"#6366f1"}`,
+                      display:"flex",alignItems:"center",justifyContent:"center",transition:"all 0.2s",
+                      boxShadow:state.done?"0 0 8px rgba(16,185,129,0.4)":"none"}}>
+                      {state.done&&<span style={{color:"#fff",fontSize:13,fontWeight:900}}>✓</span>}
+                      {state.notAvailable&&<span style={{color:"#475569",fontSize:13,fontWeight:900}}>—</span>}
+                    </div>
+
+                    {/* Report name */}
+                    <div style={{flex:1,minWidth:160}}>
+                      <div style={{fontSize:13,fontWeight:500,color:isDone?"#64748b":"#f8fafc",textDecoration:state.done?"line-through":"none"}}>
+                        {report.text}
+                      </div>
+                      {state.completedBy&&state.done&&(
+                        <div style={{fontSize:10,color:"#34d399",fontWeight:700,marginTop:2}}>✓ Completed by {state.completedBy}</div>
+                      )}
+                      {state.notAvailable&&(
+                        <div style={{fontSize:10,color:"#64748b",fontWeight:600,marginTop:2}}>Not available this month</div>
+                      )}
+                    </div>
+
+                    {/* Completed by dropdown */}
+                    <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                      <select
+                        value={state.completedBy||""}
+                        disabled={state.notAvailable}
+                        onChange={e=>setMonthlyReports(p=>({...p,[report.id]:{...p[report.id],completedBy:e.target.value,done:e.target.value!==""?true:p[report.id].done}}))}
+                        style={{padding:"6px 10px",borderRadius:8,border:"1px solid rgba(255,255,255,0.1)",background:"#1e293b",color:state.completedBy?"#a5b4fc":"#475569",fontSize:12,fontWeight:600,cursor:state.notAvailable?"not-allowed":"pointer",opacity:state.notAvailable?0.4:1}}>
+                        <option value="">Who completed this?</option>
+                        {PICS.map(p=><option key={p} value={p}>{p}</option>)}
+                      </select>
+
+                      {/* Not Available toggle */}
+                      <button
+                        onClick={()=>setMonthlyReports(p=>({...p,[report.id]:{done:false,completedBy:"",notAvailable:!state.notAvailable}}))}
+                        style={{padding:"6px 12px",borderRadius:8,border:`1px solid ${state.notAvailable?"rgba(100,116,139,0.5)":"rgba(255,255,255,0.08)"}`,background:state.notAvailable?"rgba(100,116,139,0.2)":"rgba(255,255,255,0.04)",color:state.notAvailable?"#94a3b8":"#475569",fontSize:11,fontWeight:700,whiteSpace:"nowrap"}}>
+                        {state.notAvailable?"↩ Restore":"Not Available"}
+                      </button>
+
+                      {/* Reset button */}
+                      {(state.done||state.completedBy)&&!state.notAvailable&&(
+                        <button onClick={()=>setMonthlyReports(p=>({...p,[report.id]:{done:false,completedBy:"",notAvailable:false}}))}
+                          style={{padding:"6px 10px",borderRadius:8,border:"1px solid rgba(239,68,68,0.3)",background:"rgba(239,68,68,0.08)",color:"#f87171",fontSize:11,fontWeight:700}}>
+                          Reset
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══ ADD TASKS ═══════════════════════════════════════════════════════ */}
+      {view==="board"&&(
+        <div style={{maxWidth:1440,margin:"0 auto",padding:"0 20px 52px"}}>
+          <div style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.08)",borderRadius:14,padding:18}}>
+            <div style={{fontSize:12,fontWeight:800,color:"#475569",letterSpacing:"0.08em",marginBottom:12}}>➕ Add Task</div>
+            {(tab==="wknd"?customTasks:wdCustomTasks).map(t=>(
+              <div key={t.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"7px 10px",background:"rgba(255,255,255,0.04)",borderRadius:8,border:"1px solid rgba(255,255,255,0.06)",marginBottom:5}}>
+                <div style={{display:"flex",alignItems:"center",gap:10}}>
+                  <span style={{fontSize:12,color:"#94a3b8"}}>{t.text}</span>
+                  {t.pic&&<span style={{fontSize:9,fontWeight:700,color:"#818cf8",background:"rgba(99,102,241,0.15)",padding:"2px 7px",borderRadius:99}}>→ {t.pic} · PIC {PICS.indexOf(t.pic)+1}</span>}
+                </div>
+                <button onClick={()=>tab==="wknd"?setCustomTasks(p=>p.filter(x=>x.id!==t.id)):setWdCustomTasks(p=>p.filter(x=>x.id!==t.id))}
+                  style={{background:"none",border:"none",color:"#ef4444",fontSize:18,lineHeight:1,padding:"0 4px"}}>×</button>
+              </div>
+            ))}
+            <div style={{display:"flex",gap:8,marginTop:8,flexWrap:"wrap"}}>
+              {tab!=="wknd"&&(
+                <select value={addPic} onChange={e=>setAddPic(e.target.value)}
+                  style={{padding:"9px 10px",borderRadius:8,border:"1px solid rgba(255,255,255,0.1)",background:"#1e293b",color:"#f8fafc",fontSize:12,fontWeight:600,minWidth:160}}>
+                  {(tab==="w2"?PICS.filter(p=>p!==absentPic):PICS).map(p=>(
+                    <option key={p} value={p}>{p} — PIC {PICS.indexOf(p)+1}</option>
+                  ))}
+                </select>
+              )}
+              <input value={addInput} onChange={e=>setAddInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addTask()}
+                placeholder="Type a task and press Enter…"
+                style={{flex:1,minWidth:200,padding:"9px 14px",borderRadius:8,border:"1px solid rgba(255,255,255,0.1)",background:"#1e293b",color:"#f8fafc",fontSize:12}}/>
+              <button onClick={addTask} style={{padding:"9px 20px",borderRadius:8,background:"linear-gradient(135deg,#6366f1,#8b5cf6)",color:"#fff",border:"none",fontWeight:800,fontSize:12,boxShadow:"0 2px 10px rgba(99,102,241,0.35)"}}>
+                Add Task
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══ REASSIGN MODAL ══════════════════════════════════════════════════ */}
+      {modal&&(
+        <div onClick={()=>setModal(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:200,backdropFilter:"blur(6px)"}}>
+          <div onClick={e=>e.stopPropagation()} style={{background:"#1e293b",borderRadius:20,padding:28,width:360,boxShadow:"0 32px 80px rgba(0,0,0,0.6)",border:"1px solid rgba(255,255,255,0.1)"}}>
+            <div style={{fontWeight:900,fontSize:18,color:"#f8fafc",marginBottom:8}}>Reassign Task</div>
+            <div style={{fontSize:12,color:"#94a3b8",lineHeight:1.5,background:"rgba(255,255,255,0.04)",borderRadius:9,padding:"10px 13px",marginBottom:22,fontStyle:"italic",borderLeft:"3px solid #6366f1"}}>
+              "{modal.taskText}"
+            </div>
+            <div style={{fontSize:10,fontWeight:800,color:"#475569",letterSpacing:"0.1em",marginBottom:12}}>MOVE TO</div>
+            {modal.opts.map(p=>{
+              const th=THEMES[PICS.indexOf(p)%3];
+              return(
+                <button key={p} onClick={()=>doSwap(modal.taskId,p)} style={{display:"flex",alignItems:"center",gap:13,width:"100%",marginBottom:9,padding:"13px 16px",borderRadius:12,background:`${th.card}15`,border:`1px solid ${th.card}33`,cursor:"pointer"}}>
+                  <div style={{width:36,height:36,borderRadius:10,background:`linear-gradient(135deg,${th.card},${th.dark})`,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,fontSize:16}}>
+                    {p.charAt(0)}
+                  </div>
+                  <div style={{textAlign:"left"}}>
+                    <div style={{fontSize:14,fontWeight:700,color:"#f8fafc"}}>{p}</div>
+                    <div style={{fontSize:10,color:th.card,fontWeight:600}}>PIC {PICS.indexOf(p)+1}</div>
+                  </div>
+                </button>
+              );
+            })}
+            <button onClick={()=>setModal(null)} style={{display:"block",width:"100%",marginTop:6,padding:"11px",borderRadius:12,background:"transparent",border:"1px solid rgba(255,255,255,0.08)",color:"#475569",fontSize:13,fontWeight:600,cursor:"pointer"}}>Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {/* ══ PIN MODAL ═══════════════════════════════════════════════════════ */}
+      {pinModal&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.8)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:300,backdropFilter:"blur(8px)"}}>
+          <div style={{background:"#1e293b",borderRadius:22,padding:34,width:340,boxShadow:"0 32px 80px rgba(0,0,0,0.6)",textAlign:"center",border:"1px solid rgba(255,255,255,0.08)"}}>
+            <div style={{fontSize:40,marginBottom:14}}>{pinModal==="unlock"?"🔐":"⚙️"}</div>
+            <div style={{fontWeight:900,fontSize:20,color:"#f8fafc",marginBottom:6}}>{pinModal==="unlock"?"Manager PIN":"Set New PIN"}</div>
+            <div style={{fontSize:13,color:"#64748b",marginBottom:24,lineHeight:1.6}}>{pinModal==="unlock"?"Enter your PIN to unlock the board.":"Choose a new PIN (min 4 digits)."}</div>
+            <input type="password" value={pinInput} onChange={e=>{setPinInput(e.target.value);setPinError("");}}
+              onKeyDown={e=>e.key==="Enter"&&handlePinSubmit()} placeholder="••••••" autoFocus
+              style={{width:"100%",padding:"14px",borderRadius:12,border:`2px solid ${pinError?"#ef4444":"rgba(255,255,255,0.1)"}`,background:"#0f172a",color:"#f8fafc",fontSize:24,textAlign:"center",letterSpacing:"0.4em",marginBottom:pinError?8:20,outline:"none"}}/>
+            {pinError&&<div style={{fontSize:12,color:"#ef4444",marginBottom:18,fontWeight:600}}>{pinError}</div>}
+            <button onClick={handlePinSubmit} style={{width:"100%",padding:"14px",borderRadius:12,background:"linear-gradient(135deg,#6366f1,#8b5cf6)",color:"#fff",border:"none",fontWeight:900,fontSize:15,cursor:"pointer",marginBottom:10,boxShadow:"0 4px 20px rgba(99,102,241,0.4)"}}>
+              {pinModal==="unlock"?"Unlock Board":"Save PIN"}
+            </button>
+            <button onClick={()=>{setPinModal(null);setPinInput("");setPinError("");}} style={{background:"none",border:"none",color:"#475569",fontSize:12,cursor:"pointer",fontWeight:600}}>Cancel</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+  </script>
+</body>
+</html>
